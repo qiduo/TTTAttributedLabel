@@ -198,6 +198,7 @@ static inline NSAttributedString * NSAttributedStringBySettingColorFromContext(N
 @synthesize textInsets = _textInsets;
 @synthesize verticalAlignment = _verticalAlignment;
 @synthesize activeLink = _activeLink;
+@synthesize truncated = _truncated;
 
 - (id)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -419,6 +420,79 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     return [self linkAtCharacterIndex:idx];
 }
 
+
+- (BOOL)isPointAtTruncation:(CGPoint)p{
+    
+    if (!self.truncated || !self.truncationTokenString) {
+        return NO;
+    }
+    
+    if (!CGRectContainsPoint(self.bounds, p)) {
+        return NO;
+    }
+    
+    CGRect textRect = [self textRectForBounds:self.bounds limitedToNumberOfLines:self.numberOfLines];
+    if (!CGRectContainsPoint(textRect, p)) {
+        return NO;
+    }
+    
+    // Offset tap coordinates by textRect origin to make them relative to the origin of frame
+    p = CGPointMake(p.x - textRect.origin.x, p.y - textRect.origin.y);
+    // Convert tap coordinates (start at top left) to CT coordinates (start at bottom left)
+    p = CGPointMake(p.x, textRect.size.height - p.y);
+    
+    CGMutablePathRef path = CGPathCreateMutable();
+    CGPathAddRect(path, NULL, textRect);
+    CTFrameRef frame = CTFramesetterCreateFrame(self.framesetter, CFRangeMake(0, [self.attributedText length]), path, NULL);
+    if (frame == NULL) {
+        CFRelease(path);
+        return NO;
+    }
+    
+    CFArrayRef lines = CTFrameGetLines(frame);
+    NSInteger numberOfLines = self.numberOfLines > 0 ? MIN(self.numberOfLines, CFArrayGetCount(lines)) : CFArrayGetCount(lines);
+    if (numberOfLines == 0) {
+        CFRelease(frame);
+        CFRelease(path);
+        return NO;
+    }
+    
+
+    CGPoint lineOrigins[numberOfLines];
+    CTFrameGetLineOrigins(frame, CFRangeMake(0, numberOfLines), lineOrigins);
+    
+    CGPoint lineOrigin = lineOrigins[numberOfLines-1];
+    CTLineRef line = CFArrayGetValueAtIndex(lines, numberOfLines-1);
+    
+    // Get bounding information of line
+    CGFloat ascent = 0.0f, descent = 0.0f, leading = 0.0f;
+    CGFloat width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
+    CGFloat yMin = floor(lineOrigin.y - descent);
+    CGFloat yMax = ceil(lineOrigin.y + ascent);
+    
+    CFRelease(frame);
+    CFRelease(path);
+    
+    // Check if the point is within this line vertically
+    if (p.y <= yMax && p.y >= yMin) {
+        NSAttributedString *tokenString = self.truncationTokenString;
+        
+        CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
+        // Get bounding information of truncationToken
+        CGFloat tokenWidth = CTLineGetTypographicBounds(truncationToken, &ascent, &descent, &leading);
+        
+        CGFloat lineWidth = width + lineOrigin.x;
+        CFRelease(truncationToken);
+        // Check if the point is within this truncation token horizontally
+        if ((p.x >= lineWidth && p.x <= lineWidth + tokenWidth)||(p.x >= lineWidth - tokenWidth && p.x <= lineWidth)) {
+            return YES;
+        }
+
+    }
+    
+    return NO;
+}
+
 - (CFIndex)characterIndexAtPoint:(CGPoint)p {
     if (!CGRectContainsPoint(self.bounds, p)) {
         return NSNotFound;
@@ -568,15 +642,19 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                     truncatedLine = CFRetain(truncationToken);
                 }
                 
+                self.truncated = YES;
+                
                 CTLineDraw(truncatedLine, c);
                 
                 CFRelease(truncatedLine);
                 CFRelease(truncationLine);
                 CFRelease(truncationToken);
             } else {
+                self.truncated = NO;
                 CTLineDraw(line, c);
             }
         } else {
+            self.truncated = NO;
             CTLineDraw(line, c);
         }
     }

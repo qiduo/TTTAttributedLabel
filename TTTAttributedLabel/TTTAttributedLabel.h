@@ -175,6 +175,18 @@ extern NSString * const kTTTBackgroundCornerRadiusAttributeName;
  */
 @property (nonatomic, strong) NSAttributedString *truncationTokenString;
 
+/**
+ if the text is truncated by the truncationTokenString
+ */
+@property (nonatomic, assign) BOOL truncated;
+
+
+/**
+ if the point is at the rect of the truncation
+ */
+- (BOOL)isPointAtTruncation:(CGPoint)p;
+
+
 ///----------------------------------
 /// @name Setting the Text Attributes
 ///----------------------------------
