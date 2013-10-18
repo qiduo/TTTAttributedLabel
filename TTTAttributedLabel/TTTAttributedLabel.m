@@ -198,6 +198,7 @@ static inline NSAttributedString * NSAttributedStringBySettingColorFromContext(N
 @synthesize textInsets = _textInsets;
 @synthesize verticalAlignment = _verticalAlignment;
 @synthesize activeLink = _activeLink;
+
 @synthesize truncated = _truncated;
 
 - (id)initWithFrame:(CGRect)frame {
@@ -421,7 +422,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
 }
 
 
-- (BOOL)isPointAtTruncation:(CGPoint)p{
+- (BOOL)isPointAtTruncation:(CGPoint)p withInOffset:(CGFloat)offset{
     
     if (!self.truncated || !self.truncationTokenString) {
         return NO;
@@ -474,7 +475,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     CFRelease(path);
     
     // Check if the point is within this line vertically
-    if (p.y <= yMax && p.y >= yMin) {
+    if (p.y <= yMax + offset && p.y >= yMin - offset) {
         NSAttributedString *tokenString = self.truncationTokenString;
         
         CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
@@ -484,7 +485,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
         CGFloat lineWidth = width + lineOrigin.x;
         CFRelease(truncationToken);
         // Check if the point is within this truncation token horizontally
-        if ((p.x >= lineWidth && p.x <= lineWidth + tokenWidth)||(p.x >= lineWidth - tokenWidth && p.x <= lineWidth)) {
+        if ((p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset)||(p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset)) {
             return YES;
         }
 
@@ -579,7 +580,9 @@ withTextCheckingResult:(NSTextCheckingResult *)result
 	
     CGPoint lineOrigins[numberOfLines];
     CTFrameGetLineOrigins(frame, CFRangeMake(0, numberOfLines), lineOrigins);
-        
+    
+    _truncated = NO;
+    
     for (CFIndex lineIndex = 0; lineIndex < numberOfLines; lineIndex++) {
         CGPoint lineOrigin = lineOrigins[lineIndex];
         CGContextSetTextPosition(c, lineOrigin.x, lineOrigin.y);
@@ -642,7 +645,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                     truncatedLine = CFRetain(truncationToken);
                 }
                 
-                self.truncated = YES;
+                _truncated = YES;
                 
                 CTLineDraw(truncatedLine, c);
                 
@@ -650,11 +653,9 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                 CFRelease(truncationLine);
                 CFRelease(truncationToken);
             } else {
-                self.truncated = NO;
                 CTLineDraw(line, c);
             }
         } else {
-            self.truncated = NO;
             CTLineDraw(line, c);
         }
     }
@@ -1087,6 +1088,15 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
             [self.delegate attributedLabel:self didSelectLinkWithTextCheckingResult:result];
         }
     } else {
+        if (_truncated && self.delegate) {
+            CGPoint tapLocation = [[touches anyObject] locationInView:self];
+            BOOL truncationTouched = [self isPointAtTruncation:tapLocation withInOffset:8.0];
+            if (truncationTouched && [self.delegate respondsToSelector:@selector(attributedLabel:didSelectLinkWithTruncationToken:)]) {
+                [self.delegate attributedLabel:self didSelectLinkWithTruncationToken:self.truncationTokenString];
+                return;
+            }
+        }
+        
         [super touchesEnded:touches withEvent:event];
     }
 }

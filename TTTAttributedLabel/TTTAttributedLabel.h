@@ -178,14 +178,13 @@ extern NSString * const kTTTBackgroundCornerRadiusAttributeName;
 /**
  if the text is truncated by the truncationTokenString
  */
-@property (nonatomic, assign) BOOL truncated;
+@property (nonatomic, readonly) BOOL truncated;
 
 
 /**
- if the point is at the rect of the truncation
+ the torerance of Offset for selecting truncationToken
  */
-- (BOOL)isPointAtTruncation:(CGPoint)p;
-
+@property (nonatomic, assign) CGFloat truncationTokenOffset;
 
 ///----------------------------------
 /// @name Setting the Text Attributes
@@ -362,5 +361,15 @@ didSelectLinkWithPhoneNumber:(NSString *)phoneNumber;
  */
 - (void)attributedLabel:(TTTAttributedLabel *)label
 didSelectLinkWithTextCheckingResult:(NSTextCheckingResult *)result;
+
+/**
+ Tells the delegate that the user did select a truncation.
+ 
+ @param label The label whose trucnationToken was selected.
+ @param result the custom trucncationToken.
+ */
+- (void)attributedLabel:(TTTAttributedLabel *)label
+didSelectLinkWithTruncationToken:(NSAttributedString *)trucncationToken;
+
 
 @end
