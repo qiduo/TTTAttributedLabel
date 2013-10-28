@@ -467,46 +467,51 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     CGPoint lineOrigin = lineOrigins[numberOfLines-1];
     CTLineRef line = CFArrayGetValueAtIndex(lines, numberOfLines-1);
     
+    CFRange lastLineRange = CTLineGetStringRange(line);
+    CFRange textRange = CFRangeMake(0, [self.attributedText length]);
+    
     // Get bounding information of line
     CGFloat ascent = 0.0f, descent = 0.0f, leading = 0.0f;
     CGFloat width = CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
     CGFloat yMin = floor(lineOrigin.y - descent);
     CGFloat yMax = ceil(lineOrigin.y + ascent);
-    
+        
     CFRelease(frame);
     CFRelease(path);
     
-    // Check if the point is within this line vertically
-    if (p.y <= yMax + offset && p.y >= yMin - offset) {
-        NSAttributedString *tokenString = self.truncationTokenString;
-        CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
-        // Get bounding information of truncationToken
-        CGFloat tokenWidth = CTLineGetTypographicBounds(truncationToken, &ascent, &descent, &leading);
-        
-        CGFloat lineWidth = width + lineOrigin.x;
-        CFRelease(truncationToken);
-        
-        CFRange lastLineRange = CTLineGetStringRange(line);
-        
-        NSMutableAttributedString *truncationString = [[self.attributedText attributedSubstringFromRange:NSMakeRange(lastLineRange.location, lastLineRange.length)] mutableCopy];
-        
-        unichar lastCharacter = [[truncationString string] characterAtIndex:lastLineRange.length - 1];
-        
-        //check if lastLine is truncated by NewLine Character
-        
-        if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter]) {
-            // Check if the point is within this truncation token horizontally
-            if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
-                return YES;
+    if (!(lastLineRange.length == 0 && lastLineRange.location == 0) && lastLineRange.location + lastLineRange.length < textRange.location + textRange.length) {
+        // Check if the point is within this line vertically
+        if (p.y <= yMax + offset && p.y >= yMin - offset) {
+            NSAttributedString *tokenString = self.truncationTokenString;
+            CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
+            // Get bounding information of truncationToken
+            CGFloat tokenWidth = CTLineGetTypographicBounds(truncationToken, &ascent, &descent, &leading);
+            
+            CGFloat lineWidth = width + lineOrigin.x;
+            CFRelease(truncationToken);
+            
+            
+            NSMutableAttributedString *truncationString = [[self.attributedText attributedSubstringFromRange:NSMakeRange(lastLineRange.location, lastLineRange.length)] mutableCopy];
+            
+            unichar lastCharacter = [[truncationString string] characterAtIndex:lastLineRange.length - 1];
+            
+            //check if lastLine is truncated by NewLine Character
+            
+            if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter]) {
+                // Check if the point is within this truncation token horizontally
+                if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
+                    return YES;
+                }
+            } else {
+                if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
+                    return YES;
+                }
             }
-        } else {
-            if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
-                return YES;
-            }
+            
         }
 
     }
-    
+
     return NO;
 }
 
