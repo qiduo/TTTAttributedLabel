@@ -176,15 +176,19 @@ extern NSString * const kTTTBackgroundCornerRadiusAttributeName;
 @property (nonatomic, strong) NSAttributedString *truncationTokenString;
 
 /**
- if the text is truncated by the truncationTokenString
+ if the text is truncated by the truncationTokenString or quote
  */
-@property (nonatomic, readonly) BOOL truncated;
-
+@property (nonatomic, readonly) BOOL truncatedOrQuoted;
 
 /**
- the torerance of Offset for selecting truncationToken
+ the torerance of Offset for selecting truncationToken or quoteToken
  */
-@property (nonatomic, assign) CGFloat truncationTokenOffset;
+@property (nonatomic, assign) CGFloat tokenOffset;
+
+/**
+ The custome quote token that appears at the end of the line
+ */
+@property (nonatomic, strong) NSAttributedString *quoteTokenString;
 
 ///----------------------------------
 /// @name Setting the Text Attributes
@@ -369,7 +373,7 @@ didSelectLinkWithTextCheckingResult:(NSTextCheckingResult *)result;
  @param result the custom trucncationToken.
  */
 - (void)attributedLabel:(TTTAttributedLabel *)label
-didSelectLinkWithTruncationToken:(NSAttributedString *)trucncationToken;
+didSelectLinkWithTruncationOrQuoteToken:(NSAttributedString *)trucncationToken;
 
 
 @end

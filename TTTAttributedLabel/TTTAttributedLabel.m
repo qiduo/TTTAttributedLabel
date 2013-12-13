@@ -199,7 +199,10 @@ static inline NSAttributedString * NSAttributedStringBySettingColorFromContext(N
 @synthesize verticalAlignment = _verticalAlignment;
 @synthesize activeLink = _activeLink;
 
-@synthesize truncated = _truncated;
+@synthesize tokenOffset = _tokenOffset;
+@synthesize truncatedOrQuoted = _truncatedOrQuoted;
+@synthesize truncationTokenString = _truncationTokenString;
+@synthesize quoteTokenString = _quoteTokenString;
 
 - (id)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -422,9 +425,9 @@ withTextCheckingResult:(NSTextCheckingResult *)result
 }
 
 
-- (BOOL)isPointAtTruncation:(CGPoint)p withInOffset:(CGFloat)offset{
+- (BOOL)isPointAtTruncationOrQuote:(CGPoint)p withInOffset:(CGFloat)offset{
     
-    if (!self.truncated || !self.truncationTokenString) {
+    if (!self.truncatedOrQuoted) {
         return NO;
     }
     
@@ -479,35 +482,56 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     CFRelease(frame);
     CFRelease(path);
     
-    if (!(lastLineRange.length == 0 && lastLineRange.location == 0) && lastLineRange.location + lastLineRange.length < textRange.location + textRange.length) {
+    if (!(lastLineRange.length == 0 && lastLineRange.location == 0)) {
         // Check if the point is within this line vertically
         if (p.y <= yMax + offset && p.y >= yMin - offset) {
-            NSAttributedString *tokenString = self.truncationTokenString;
-            CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
-            // Get bounding information of truncationToken
-            CGFloat tokenWidth = CTLineGetTypographicBounds(truncationToken, &ascent, &descent, &leading);
-            
-            CGFloat lineWidth = width + lineOrigin.x;
-            CFRelease(truncationToken);
-            
-            
-            NSMutableAttributedString *truncationString = [[self.attributedText attributedSubstringFromRange:NSMakeRange(lastLineRange.location, lastLineRange.length)] mutableCopy];
-            
-            unichar lastCharacter = [[truncationString string] characterAtIndex:lastLineRange.length - 1];
-            
-            //check if lastLine is truncated by NewLine Character
-            
-            if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter]) {
-                // Check if the point is within this truncation token horizontally
-                if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
-                    return YES;
+            if (lastLineRange.location + lastLineRange.length < textRange.location + textRange.length) {
+                NSAttributedString *tokenString = self.truncationTokenString;
+                CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
+                // Get bounding information of truncationToken
+                CGFloat tokenWidth = CTLineGetTypographicBounds(truncationToken, &ascent, &descent, &leading);
+                
+                CGFloat lineWidth = width + lineOrigin.x;
+                CFRelease(truncationToken);
+                
+                NSMutableAttributedString *truncationString = [[self.attributedText attributedSubstringFromRange:NSMakeRange(lastLineRange.location, lastLineRange.length)] mutableCopy];
+                
+                unichar lastCharacter = [[truncationString string] characterAtIndex:lastLineRange.length - 1];
+                
+                //check if lastLine is truncated by NewLine Character
+                
+                if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter] && lineWidth + tokenWidth <= self.frame.size.width ) {
+                    // Check if the point is within this truncation token horizontally
+                    if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
+                        return YES;
+                    }
+                } else {
+                    if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
+                        return YES;
+                    }
                 }
-            } else {
-                if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
-                    return YES;
+
+            } else if (self.quoteTokenString != nil){
+                NSAttributedString *tokenString = self.truncationTokenString;
+                CTLineRef quoteToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
+                // Get bounding information of truncationToken
+                CGFloat tokenWidth = CTLineGetTypographicBounds(quoteToken, &ascent, &descent, &leading);
+                
+                CGFloat lineWidth = width + lineOrigin.x;
+                CFRelease(quoteToken);
+                                
+                // Check if the point is within this truncation token horizontally
+                if (lineWidth + tokenWidth <= self.frame.size.width ) {
+                    // Check if the point is within this truncation token horizontally
+                    if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
+                        return YES;
+                    }
+                } else {
+                    if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
+                        return YES;
+                    }
                 }
             }
-            
         }
 
     }
@@ -602,7 +626,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     CGPoint lineOrigins[numberOfLines];
     CTFrameGetLineOrigins(frame, CFRangeMake(0, numberOfLines), lineOrigins);
     
-    _truncated = NO;
+    _truncatedOrQuoted = NO;
     
     for (CFIndex lineIndex = 0; lineIndex < numberOfLines; lineIndex++) {
         CGPoint lineOrigin = lineOrigins[lineIndex];
@@ -612,7 +636,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
         if (lineIndex == numberOfLines - 1 && truncateLastLine) {
             // Check if the range of text in the last line reaches the end of the full attributed string
             CFRange lastLineRange = CTLineGetStringRange(line);
-            
+        
             if (!(lastLineRange.length == 0 && lastLineRange.location == 0) && lastLineRange.location + lastLineRange.length < textRange.location + textRange.length) {
                 // Get correct truncationType and attribute position
                 CTLineTruncationType truncationType;
@@ -666,13 +690,45 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                     truncatedLine = CFRetain(truncationToken);
                 }
                 
-                _truncated = YES;
+                _truncatedOrQuoted = YES;
                 
                 CTLineDraw(truncatedLine, c);
                 
                 CFRelease(truncatedLine);
                 CFRelease(truncationLine);
                 CFRelease(truncationToken);
+            } else if (self.quoteTokenString != nil && (lastLineRange.location + lastLineRange.length) == (textRange.location + textRange.length)){
+                CTLineTruncationType truncationType = kCTLineTruncationEnd;
+                CTLineRef quoteToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)self.quoteTokenString);
+
+                // Append quoteToken to the string
+                // because if string isn't too long, CT wont add the truncationToken on it's own
+                // There is no change of a double truncationToken because CT only add the token if it removes characters (and the one we add will go first)
+                NSMutableAttributedString *quotedString = [[attributedString attributedSubstringFromRange:NSMakeRange(lastLineRange.location, lastLineRange.length)] mutableCopy];
+                if (lastLineRange.length > 0) {
+                    // Remove any newline at the end (we don't want newline space between the text and the truncation token). There can only be one, because the second would be on the next line.
+                    unichar lastCharacter = [[quotedString string] characterAtIndex:lastLineRange.length - 1];
+                    if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter]) {
+                        [quotedString deleteCharactersInRange:NSMakeRange(lastLineRange.length - 1, 1)];
+                    }
+                }
+                [quotedString appendAttributedString:self.quoteTokenString];
+                CTLineRef quoteLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)quotedString);
+                
+                // Truncate the line in case it is too long.
+                CTLineRef quotedLine = CTLineCreateTruncatedLine(quoteLine, rect.size.width, truncationType, quoteToken);
+                if (!quotedLine) {
+                    // If the line is not as wide as the truncationToken, truncatedLine is NULL
+                    quotedLine = CFRetain(quoteToken);
+                }
+                
+                _truncatedOrQuoted = YES;
+                
+                CTLineDraw(quotedLine, c);
+                
+                CFRelease(quoteLine);
+                CFRelease(quotedLine);
+                CFRelease(quoteToken);
             } else {
                 CTLineDraw(line, c);
             }
@@ -1109,11 +1165,11 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
             [self.delegate attributedLabel:self didSelectLinkWithTextCheckingResult:result];
         }
     } else {
-        if (_truncated && self.delegate) {
+        if (_truncatedOrQuoted && self.delegate) {
             CGPoint tapLocation = [[touches anyObject] locationInView:self];
-            BOOL truncationTouched = [self isPointAtTruncation:tapLocation withInOffset:self.truncationTokenOffset];
-            if (truncationTouched && [self.delegate respondsToSelector:@selector(attributedLabel:didSelectLinkWithTruncationToken:)]) {
-                [self.delegate attributedLabel:self didSelectLinkWithTruncationToken:self.truncationTokenString];
+            BOOL truncationTouched = [self isPointAtTruncationOrQuote:tapLocation withInOffset:self.tokenOffset];
+            if (truncationTouched && [self.delegate respondsToSelector:@selector(attributedLabel:didSelectLinkWithTruncationOrQuoteToken:)]) {
+                [self.delegate attributedLabel:self didSelectLinkWithTruncationOrQuoteToken:self.truncationTokenString];
                 return;
             }
         }
