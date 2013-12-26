@@ -511,7 +511,7 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                     }
                 }
 
-            } else if (self.quoteTokenString != nil){
+            } else if (self.quoteTokenString.length > 0){
                 NSAttributedString *tokenString = self.truncationTokenString;
                 CTLineRef quoteToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
                 // Get bounding information of truncationToken
@@ -520,16 +520,11 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                 CGFloat lineWidth = width + lineOrigin.x;
                 CFRelease(quoteToken);
                                 
+                lineWidth = lineWidth > tokenWidth ? lineWidth : tokenWidth;
+                
                 // Check if the point is within this truncation token horizontally
-                if (lineWidth + tokenWidth <= self.frame.size.width ) {
-                    // Check if the point is within this truncation token horizontally
-                    if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
-                        return YES;
-                    }
-                } else {
-                    if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
-                        return YES;
-                    }
+                if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
+                    return YES;
                 }
             }
         }
@@ -628,10 +623,33 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     
     _truncatedOrQuoted = NO;
     
+    NSUInteger quoteLength = [self.quoteTokenString length];
+    if (quoteLength > 0) {
+        _truncatedOrQuoted = YES;
+    }
+    
     for (CFIndex lineIndex = 0; lineIndex < numberOfLines; lineIndex++) {
         CGPoint lineOrigin = lineOrigins[lineIndex];
         CGContextSetTextPosition(c, lineOrigin.x, lineOrigin.y);
         CTLineRef line = CFArrayGetValueAtIndex(lines, lineIndex);
+        if (lineIndex == numberOfLines - 2 && quoteLength > 0) {
+            CFRange currentLineRange = CTLineGetStringRange(line);
+            NSUInteger stringLength = [attributedString length];
+            if (stringLength - currentLineRange.location - currentLineRange.length < quoteLength) {
+                NSAttributedString *subAttributeString = [attributedString attributedSubstringFromRange:NSMakeRange(currentLineRange.location, stringLength - quoteLength - currentLineRange.location)];
+                CTLineRef subLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)subAttributeString);
+                CTLineDraw(subLine, c);
+                CFRelease(subLine);
+                
+                CTLineRef quoteLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)self.quoteTokenString);
+                lineOrigin = lineOrigins[lineIndex+1];
+                CGContextSetTextPosition(c, lineOrigin.x, lineOrigin.y);
+                CTLineDraw(quoteLine, c);
+                CFRelease(quoteLine);
+                break;
+            }
+        }
+        
         
         if (lineIndex == numberOfLines - 1 && truncateLastLine) {
             // Check if the range of text in the last line reaches the end of the full attributed string
@@ -697,38 +715,6 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                 CFRelease(truncatedLine);
                 CFRelease(truncationLine);
                 CFRelease(truncationToken);
-            } else if (self.quoteTokenString != nil && (lastLineRange.location + lastLineRange.length) == (textRange.location + textRange.length)){
-                CTLineTruncationType truncationType = kCTLineTruncationEnd;
-                CTLineRef quoteToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)self.quoteTokenString);
-
-                // Append quoteToken to the string
-                // because if string isn't too long, CT wont add the truncationToken on it's own
-                // There is no change of a double truncationToken because CT only add the token if it removes characters (and the one we add will go first)
-                NSMutableAttributedString *quotedString = [[attributedString attributedSubstringFromRange:NSMakeRange(lastLineRange.location, lastLineRange.length)] mutableCopy];
-                if (lastLineRange.length > 0) {
-                    // Remove any newline at the end (we don't want newline space between the text and the truncation token). There can only be one, because the second would be on the next line.
-                    unichar lastCharacter = [[quotedString string] characterAtIndex:lastLineRange.length - 1];
-                    if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter]) {
-                        [quotedString deleteCharactersInRange:NSMakeRange(lastLineRange.length - 1, 1)];
-                    }
-                }
-                [quotedString appendAttributedString:self.quoteTokenString];
-                CTLineRef quoteLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)quotedString);
-                
-                // Truncate the line in case it is too long.
-                CTLineRef quotedLine = CTLineCreateTruncatedLine(quoteLine, rect.size.width, truncationType, quoteToken);
-                if (!quotedLine) {
-                    // If the line is not as wide as the truncationToken, truncatedLine is NULL
-                    quotedLine = CFRetain(quoteToken);
-                }
-                
-                _truncatedOrQuoted = YES;
-                
-                CTLineDraw(quotedLine, c);
-                
-                CFRelease(quoteLine);
-                CFRelease(quotedLine);
-                CFRelease(quoteToken);
             } else {
                 CTLineDraw(line, c);
             }
