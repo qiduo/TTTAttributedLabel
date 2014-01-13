@@ -424,8 +424,12 @@ withTextCheckingResult:(NSTextCheckingResult *)result
     return [self linkAtCharacterIndex:idx];
 }
 
-
-- (BOOL)isPointAtTruncationOrQuote:(CGPoint)p withInOffset:(CGFloat)offset{
+/*
+ @result -1 ,point in truncation
+          0 ,point not in quote or truncation
+          1 ,point in quote
+ **/
+- (NSInteger)isPointAtTruncationOrQuote:(CGPoint)p withInOffset:(CGFloat)offset{
     
     if (!self.truncatedOrQuoted) {
         return NO;
@@ -503,18 +507,18 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                 if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter] && lineWidth + tokenWidth <= self.frame.size.width ) {
                     // Check if the point is within this truncation token horizontally
                     if (p.x >= lineWidth - offset && p.x <= lineWidth + tokenWidth + offset) {
-                        return YES;
+                        return -1;
                     }
                 } else {
                     if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
-                        return YES;
+                        return -1;
                     }
                 }
 
             } else if (self.quoteTokenString.length > 0){
                 NSAttributedString *tokenString = self.truncationTokenString;
                 CTLineRef quoteToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)tokenString);
-                // Get bounding information of truncationToken
+                // Get bounding information of quote token
                 CGFloat tokenWidth = CTLineGetTypographicBounds(quoteToken, &ascent, &descent, &leading);
                 
                 CGFloat lineWidth = width + lineOrigin.x;
@@ -522,16 +526,16 @@ withTextCheckingResult:(NSTextCheckingResult *)result
                                 
                 lineWidth = lineWidth > tokenWidth ? lineWidth : tokenWidth;
                 
-                // Check if the point is within this truncation token horizontally
+                // Check if the point is within this quote token horizontally
                 if (p.x >= lineWidth - tokenWidth - offset && p.x <= lineWidth + offset) {
-                    return YES;
+                    return 1;
                 }
             }
         }
 
     }
 
-    return NO;
+    return 0;
 }
 
 - (CFIndex)characterIndexAtPoint:(CGPoint)p {
@@ -1153,9 +1157,12 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
     } else {
         if (_truncatedOrQuoted && self.delegate) {
             CGPoint tapLocation = [[touches anyObject] locationInView:self];
-            BOOL truncationTouched = [self isPointAtTruncationOrQuote:tapLocation withInOffset:self.tokenOffset];
-            if (truncationTouched && [self.delegate respondsToSelector:@selector(attributedLabel:didSelectLinkWithTruncationOrQuoteToken:)]) {
-                [self.delegate attributedLabel:self didSelectLinkWithTruncationOrQuoteToken:self.truncationTokenString];
+            NSInteger result = [self isPointAtTruncationOrQuote:tapLocation withInOffset:self.tokenOffset];
+            if (result == -1 && [self.delegate respondsToSelector:@selector(attributedLabel:didTouchTruncationToken:)]) {
+                [self.delegate attributedLabel:self didTouchTruncationToken:self.truncationTokenString];
+                return;
+            } else if (result == 1 && [self.delegate respondsToSelector:@selector(attributedLabel:didTouchQuoteToken:)]) {
+                [self.delegate attributedLabel:self didTouchQuoteToken:self.quoteTokenString];
                 return;
             }
         }
