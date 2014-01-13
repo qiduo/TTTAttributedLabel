@@ -367,13 +367,23 @@ didSelectLinkWithPhoneNumber:(NSString *)phoneNumber;
 didSelectLinkWithTextCheckingResult:(NSTextCheckingResult *)result;
 
 /**
- Tells the delegate that the user did select a truncation.
+ Tells the delegate that the user did touch the truncation.
  
- @param label The label whose trucnationToken was selected.
+ @param label The label whose trucnationToken was touched.
  @param result the custom trucncationToken.
  */
-- (void)attributedLabel:(TTTAttributedLabel *)label
-didSelectLinkWithTruncationOrQuoteToken:(NSAttributedString *)trucncationToken;
+- (void)attributedLabel:(TTTAttributedLabel *)label didTouchTruncationToken:(NSAttributedString *)trucncationToken;
+
+/**
+ Tells the delegate that the user did touch the truncation.
+ 
+ @param label The label whose quoteToken was touched.
+ @param result the custom quoteToken.
+ */
+- (void)attributedLabel:(TTTAttributedLabel *)label didTouchQuoteToken:(NSAttributedString *)quoteToken;
+
+
+
 
 
 @end
