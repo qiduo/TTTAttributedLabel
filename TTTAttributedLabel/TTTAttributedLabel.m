@@ -1045,16 +1045,18 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
         return [super sizeThatFits:size];
     }
     
+    CGFloat TTTFloatMax = 100000;
+    
     CFRange rangeToSize = CFRangeMake(0, [self.attributedText length]);
-    CGSize constraints = CGSizeMake(size.width, CGFLOAT_MAX);
+    CGSize constraints = CGSizeMake(size.width, TTTFloatMax);
     
     if (self.numberOfLines == 1) {
         // If there is one line, the size that fits is the full width of the line
-        constraints = CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX);
+        constraints = CGSizeMake(TTTFloatMax, TTTFloatMax);
     } else if (self.numberOfLines > 0) {
         // If the line count of the label more than 1, limit the range to size to the number of lines that have been set
         CGMutablePathRef path = CGPathCreateMutable();
-        CGPathAddRect(path, NULL, CGRectMake(0.0f, 0.0f, constraints.width, CGFLOAT_MAX));
+        CGPathAddRect(path, NULL, CGRectMake(0.0f, 0.0f, constraints.width, TTTFloatMax));
         CTFrameRef frame = CTFramesetterCreateFrame(self.framesetter, CFRangeMake(0, 0), path, NULL);
         CFArrayRef lines = CTFrameGetLines(frame);
         
