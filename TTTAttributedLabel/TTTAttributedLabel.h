@@ -190,6 +190,11 @@ extern NSString * const kTTTBackgroundCornerRadiusAttributeName;
  */
 @property (nonatomic, strong) NSAttributedString *quoteTokenString;
 
+/**
+ the custom hitTestEdgeInsets to enlarge hit test area
+ */
+@property (nonatomic, assign) UIEdgeInsets hitTestEdgeInsets;
+
 ///----------------------------------
 /// @name Setting the Text Attributes
 ///----------------------------------

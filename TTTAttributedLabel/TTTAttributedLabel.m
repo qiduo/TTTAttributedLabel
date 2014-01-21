@@ -203,6 +203,7 @@ static inline NSAttributedString * NSAttributedStringBySettingColorFromContext(N
 @synthesize truncatedOrQuoted = _truncatedOrQuoted;
 @synthesize truncationTokenString = _truncationTokenString;
 @synthesize quoteTokenString = _quoteTokenString;
+@synthesize hitTestEdgeInsets = _hitTestEdgeInsets;
 
 - (id)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
@@ -435,7 +436,13 @@ withTextCheckingResult:(NSTextCheckingResult *)result
         return NO;
     }
     
-    if (!CGRectContainsPoint(self.bounds, p)) {
+    CGRect bounds;
+    if (!UIEdgeInsetsEqualToEdgeInsets(self.hitTestEdgeInsets, UIEdgeInsetsZero)) {
+        bounds = UIEdgeInsetsInsetRect(self.bounds, self.hitTestEdgeInsets);
+    } else {
+        bounds = self.bounds;
+    }
+    if (!CGRectContainsPoint(bounds, p)) {
         return NO;
     }
     
@@ -1076,6 +1083,20 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
     
     return CGSizeMake(ceilf(suggestedSize.width), ceilf(suggestedSize.height));
 }
+
+
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    if(UIEdgeInsetsEqualToEdgeInsets(self.hitTestEdgeInsets, UIEdgeInsetsZero) || !self.enabled || self.hidden) {
+        return [super pointInside:point withEvent:event];
+    }
+    
+    CGRect relativeFrame = self.bounds;
+    CGRect hitFrame = UIEdgeInsetsInsetRect(relativeFrame, self.hitTestEdgeInsets);
+    
+    return CGRectContainsPoint(hitFrame, point);
+}
+
+
 
 #pragma mark - UIResponder
 
