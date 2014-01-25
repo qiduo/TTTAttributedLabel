@@ -299,6 +299,13 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
              duration:(NSTimeInterval)duration
             withRange:(NSRange)range;
 
+/*
+ @result -1 ,point in truncation
+ 0 ,point not in quote or truncation
+ 1 ,point in quote
+ **/
+- (NSInteger)isPointAtTruncationOrQuote:(CGPoint)p withInOffset:(CGFloat)offset;
+
 @end
 
 /**
