@@ -70,6 +70,13 @@ typedef UITextAlignment TTTTextAlignment;
 typedef UILineBreakMode TTTLineBreakMode;
 #endif
 
+typedef NS_ENUM(NSUInteger, TTTItemType) {
+    TTTItemTypeOthers = 0,
+    TTTItemTypeText = 1,
+    TTTItemTypeLink = 2,
+    TTTItemTypeTruncationToken = 3,
+    TTTItemTypeFoldToken = 4,
+};
 
 static inline CTTextAlignment CTTextAlignmentFromTTTTextAlignment(TTTTextAlignment alignment) {
 #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 60000
@@ -295,6 +302,7 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
 @property (readwrite, nonatomic, strong) NSDataDetector *dataDetector;
 @property (readwrite, nonatomic, strong) NSArray *links;
 @property (readwrite, nonatomic, strong) NSTextCheckingResult *activeLink;
+@property (readwrite, nonatomic, assign) BOOL truncated;
 @end
 
 @implementation TTTAttributedLabel {
@@ -323,6 +331,10 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
     self.multipleTouchEnabled = NO;
         
     self.textInsets = UIEdgeInsetsZero;
+    self.labelTouchAreaInsets = UIEdgeInsetsZero;
+    self.lineTouchAreaInsets = UIEdgeInsetsZero;
+    self.tokenTouchAreaInsets = UIEdgeInsetsZero;
+    self.tokenClickable = NO;
     
     self.links = [NSArray array];
 
@@ -583,13 +595,114 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
     return [self linkAtCharacterIndex:idx];
 }
 
+- (TTTItemType)itemAtPoint:(CGPoint)p {
+    CFIndex idx = [self characterIndexAtPoint:p];
+    
+    if (self.tokenClickable && (self.truncated || self.folded)) {
+        // NOTE:
+        // Check truncation and folding. Hack a little.
+        // Check the last line because truncation and folding always appear on the last line in our senario.
+        // Although we've got the character index, we are still unable to get the item type without area checking since
+        // the touch events of truncation token and fold token are quite different from those of links.
+        // Duplicate code though.
+        
+        CGRect textRect = [self textRectForBounds:self.bounds limitedToNumberOfLines:self.numberOfLines];
+        
+        // Offset tap coordinates by textRect origin to make them relative to the origin of frame
+        p = CGPointMake(p.x - textRect.origin.x, p.y - textRect.origin.y);
+        // Convert tap coordinates (start at top left) to CT coordinates (start at bottom left)
+        p = CGPointMake(p.x, textRect.size.height - p.y);
+        
+        CGMutablePathRef path = CGPathCreateMutable();
+        CGPathAddRect(path, NULL, textRect);
+        CTFrameRef frame = CTFramesetterCreateFrame([self framesetter], CFRangeMake(0, (CFIndex)[self.attributedText length]), path, NULL);
+        CFArrayRef lines = CTFrameGetLines(frame);
+        NSInteger numberOfLines = self.numberOfLines > 0 ? MIN(self.numberOfLines, CFArrayGetCount(lines)) : CFArrayGetCount(lines);
+        CTLineRef lastLine = CFArrayGetValueAtIndex(lines, numberOfLines - 1);
+        CFRange lastLineRange = CTLineGetStringRange(lastLine);
+        
+        if (lastLineRange.length == 0 && lastLineRange.location == 0) {
+            CFRelease(frame);
+            CFRelease(path);
+        } else {
+            CGPoint lineOrigins[1];
+            CTFrameGetLineOrigins(frame, CFRangeMake(numberOfLines - 1, 1), lineOrigins);
+            CGPoint lastLineOrigin = lineOrigins[0];
+            CFRange textRange = CFRangeMake(0, (CFIndex)[self.attributedText length]);
+            
+            // Get bounding information of line
+            CGFloat ascent = 0.0f, descent = 0.0f, leading = 0.0f;
+            CGFloat width = (CGFloat)CTLineGetTypographicBounds(lastLine, &ascent, &descent, &leading);
+            CGFloat yMin = (CGFloat)floor(lastLineOrigin.y - descent);
+            CGFloat yMax = (CGFloat)ceil(lastLineOrigin.y + ascent);
+            
+            CFRelease(frame);
+            CFRelease(path);
+            
+            // Check if the point is within this line vertically
+            if (yMin + self.tokenTouchAreaInsets.bottom <= p.y && p.y <= yMax - self.tokenTouchAreaInsets.top) {
+                // Truncated
+                if (lastLineRange.location + lastLineRange.length < textRange.location + textRange.length) {
+                    NSAttributedString *attributedTruncationTokenString = [[NSAttributedString alloc] initWithString:self.truncationTokenString attributes:self.truncationTokenStringAttributes];
+                    
+                    CTLineRef truncationToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)attributedTruncationTokenString);
+                    CGFloat tokenWidth = (CGFloat)CTLineGetTypographicBounds(truncationToken, &ascent, &descent, &leading);
+                    CFRelease(truncationToken);
+                    
+                    NSAttributedString *truncationString = [self.attributedText attributedSubstringFromRange:NSMakeRange((NSUInteger)lastLineRange.location, (NSUInteger)lastLineRange.length)];
+                    unichar lastCharacter = [[truncationString string] characterAtIndex:(NSUInteger)(lastLineRange.length - 1)];
+                    
+                    CGFloat xMax = lastLineOrigin.x + width;
+                    
+                    // Check if lastLine is truncated by `NewLine` character
+                    if ([[NSCharacterSet newlineCharacterSet] characterIsMember:lastCharacter] && lastLineOrigin.x + width + tokenWidth <= self.bounds.size.width ) {
+                        // Check if the point is within this truncation token horizontally
+                        if (p.x >= xMax + self.tokenTouchAreaInsets.left && p.x <= xMax + tokenWidth - self.tokenTouchAreaInsets.right) {
+                            return TTTItemTypeTruncationToken;
+                        }
+                    } else {
+                        if (p.x >= xMax - tokenWidth + self.tokenTouchAreaInsets.left && p.x <= xMax - self.tokenTouchAreaInsets.right) {
+                            return TTTItemTypeTruncationToken;
+                        }
+                    }
+                } else if (self.folded) {
+                    NSAttributedString *attributedFoldTokenString = [[NSAttributedString alloc] initWithString:self.truncationTokenString attributes:self.foldTokenStringAttributes];
+                    
+                    CTLineRef foldToken = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)attributedFoldTokenString);
+                    CGFloat tokenWidth = (CGFloat)CTLineGetTypographicBounds(foldToken, &ascent, &descent, &leading);
+                    CFRelease(foldToken);
+                    
+                    CGFloat xMax = fmaxf(lastLineOrigin.x + width, tokenWidth);
+                    
+                    // Check if the point is within this fold token horizontally
+                    if (p.x >= xMax - tokenWidth + self.tokenTouchAreaInsets.left && p.x <= xMax - self.tokenTouchAreaInsets.right) {
+                        return TTTItemTypeFoldToken;
+                    }
+                }
+            }
+        }
+    }
+    
+    if ([self linkAtCharacterIndex:idx]) {
+        return TTTItemTypeLink;
+    }
+    
+    if (idx != NSNotFound) {
+        return TTTItemTypeText;
+    }
+    
+    return TTTItemTypeOthers;
+}
+
 - (CFIndex)characterIndexAtPoint:(CGPoint)p {
-    if (!CGRectContainsPoint(self.bounds, p)) {
+    CGRect touchableBounds = UIEdgeInsetsInsetRect(self.bounds, self.labelTouchAreaInsets);
+    if (!CGRectContainsPoint(touchableBounds, p)) {
         return NSNotFound;
     }
     
     CGRect textRect = [self textRectForBounds:self.bounds limitedToNumberOfLines:self.numberOfLines];
-    if (!CGRectContainsPoint(textRect, p)) {
+    CGRect touchableTextRect = UIEdgeInsetsInsetRect(textRect, self.labelTouchAreaInsets);
+    if (!CGRectContainsPoint(touchableTextRect, p)) {
         return NSNotFound;
     }
     
@@ -628,17 +741,45 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
         CGFloat width = (CGFloat)CTLineGetTypographicBounds(line, &ascent, &descent, &leading);
         CGFloat yMin = (CGFloat)floor(lineOrigin.y - descent);
         CGFloat yMax = (CGFloat)ceil(lineOrigin.y + ascent);
+        CGFloat xMin = lineOrigin.x;
+        CGFloat xMax = lineOrigin.x + width;
         
         // Check if we've already passed the line
-        if (p.y > yMax) {
+        if (p.y > yMax - self.lineTouchAreaInsets.top) {
             break;
         }
         // Check if the point is within this line vertically
-        if (p.y >= yMin) {
+        if (p.y >= yMin + self.lineTouchAreaInsets.bottom) {
             // Check if the point is within this line horizontally
-            if (p.x >= lineOrigin.x && p.x <= lineOrigin.x + width) {
+            if (p.x >= xMin + self.lineTouchAreaInsets.left && p.x <= xMax - self.lineTouchAreaInsets.right) {
                 // Convert CT coordinates to line-relative coordinates
-                CGPoint relativePoint = CGPointMake(p.x - lineOrigin.x, p.y - lineOrigin.y);
+                CGPoint relativePoint;
+                if (CGRectContainsPoint(CGRectMake(xMin, yMin, width, yMax - yMin), p)) {
+                    relativePoint = CGPointMake(p.x - lineOrigin.x, p.y - lineOrigin.y);
+                } else {
+                    // Outside the line but still in touch area
+                    CGFloat x;
+                    CGFloat y;
+                    
+                    if (p.x < xMin) {
+                        x = xMin;
+                    } else if (p.x < xMax) {
+                        x = xMax;
+                    } else {
+                        x = p.x;
+                    }
+                    
+                    if (p.y < yMin) {
+                        y = yMin;
+                    } else if (p.y > yMax) {
+                        y = yMax;
+                    } else {
+                        y = p.y;
+                    }
+                    
+                    relativePoint = CGPointMake(x - lineOrigin.x, y - lineOrigin.y);
+                }
+            
                 idx = CTLineGetStringIndexForPosition(line, relativePoint);
                 break;
             }
@@ -647,7 +788,7 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
     
     CFRelease(frame);
     CFRelease(path);
-        
+    
     return idx;
 }
 
@@ -669,11 +810,33 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
 	
     CGPoint lineOrigins[numberOfLines];
     CTFrameGetLineOrigins(frame, CFRangeMake(0, numberOfLines), lineOrigins);
-        
+    
+    NSUInteger foldTokenLength = [self.foldTokenString length];
+    
     for (CFIndex lineIndex = 0; lineIndex < numberOfLines; lineIndex++) {
         CGPoint lineOrigin = lineOrigins[lineIndex];
         CGContextSetTextPosition(c, lineOrigin.x, lineOrigin.y);
         CTLineRef line = CFArrayGetValueAtIndex(lines, lineIndex);
+        
+        // Draw fold token
+        if (lineIndex == numberOfLines - 2 && self.isFolded && foldTokenLength > 0) {
+            CFRange currentLineRange = CTLineGetStringRange(line);
+            NSUInteger stringLength = [attributedString length];
+            if (stringLength - (NSUInteger)(currentLineRange.location + currentLineRange.length) < foldTokenLength) {
+                NSAttributedString *subAttributeString = [attributedString attributedSubstringFromRange:NSMakeRange((NSUInteger)currentLineRange.location, stringLength - foldTokenLength - (NSUInteger)currentLineRange.location)];
+                CTLineRef subLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)subAttributeString);
+                CTLineDraw(subLine, c);
+                CFRelease(subLine);
+                
+                NSAttributedString *attributedFoldTokenString = [[NSAttributedString alloc] initWithString:self.foldTokenString attributes:self.foldTokenStringAttributes];
+                CTLineRef foleTokenLine = CTLineCreateWithAttributedString((__bridge CFAttributedStringRef)attributedFoldTokenString);
+                lineOrigin = lineOrigins[lineIndex + 1];
+                CGContextSetTextPosition(c, lineOrigin.x, lineOrigin.y);
+                CTLineDraw(foleTokenLine, c);
+                CFRelease(foleTokenLine);
+                break;
+            }
+        }
         
         if (lineIndex == numberOfLines - 1 && truncateLastLine) {
             // Check if the range of text in the last line reaches the end of the full attributed string
@@ -757,6 +920,9 @@ static inline CGSize CTFramesetterSuggestFrameSizeForAttributedStringWithConstra
                 CGContextSetTextPosition(c, penOffset, lineOrigin.y);
                 
                 CTLineDraw(truncatedLine, c);
+                
+                self.truncated = YES;
+                self.folded = NO;
                 
                 CFRelease(truncatedLine);
                 CFRelease(truncationLine);
@@ -1193,6 +1359,17 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
     [self setNeedsDisplay];
 }
 
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    if (UIEdgeInsetsEqualToEdgeInsets(self.labelTouchAreaInsets, UIEdgeInsetsZero)) {
+        return [super pointInside:point withEvent:event];
+    }
+    
+    CGRect bounds = self.bounds;
+    CGRect touchRect = UIEdgeInsetsInsetRect(bounds, self.labelTouchAreaInsets);
+    
+    return CGRectContainsPoint(touchRect, point);
+}
+
 #pragma mark - UIResponder
 
 - (BOOL)canBecomeFirstResponder {
@@ -1278,6 +1455,25 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
         // Fallback to `attributedLabel:didSelectLinkWithTextCheckingResult:` if no other delegate method matched.
         if ([self.delegate respondsToSelector:@selector(attributedLabel:didSelectLinkWithTextCheckingResult:)]) {
             [self.delegate attributedLabel:self didSelectLinkWithTextCheckingResult:result];
+        }
+    } else if (self.isTokenClickable && (self.isTruncated || self.isFolded)) {
+        CGPoint point = [[touches anyObject] locationInView:self];
+        TTTItemType itemType = [self itemAtPoint:point];
+        switch (itemType) {
+            case TTTItemTypeFoldToken:
+                if ([self.delegate respondsToSelector:@selector(attributedLabel:didTouchFoldTokenString:)]) {
+                    [self.delegate attributedLabel:self didTouchFoldTokenString:self.foldTokenString];
+                }
+                break;
+            case TTTItemTypeTruncationToken:
+                if ([self.delegate respondsToSelector:@selector(attributedLabel:didTouchTruncationTokenString:)]) {
+                    [self.delegate attributedLabel:self didTouchTruncationTokenString:self.truncationTokenString];
+                }
+                break;
+            case TTTItemTypeText:
+            case TTTItemTypeLink:
+            case TTTItemTypeOthers:
+                break; // Nothing
         }
     } else {
         [super touchesEnded:touches withEvent:event];

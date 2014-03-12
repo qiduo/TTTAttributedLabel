@@ -205,9 +205,9 @@ extern NSString * const kTTTBackgroundCornerRadiusAttributeName;
  */
 @property (nonatomic, assign) TTTAttributedLabelVerticalAlignment verticalAlignment;
 
-///--------------------------------------------
-/// @name Accessing Truncation Token Appearance
-///--------------------------------------------
+///-----------------------------------------------------
+/// @name Accessing Truncation Token Appearance & Status
+///-----------------------------------------------------
 
 /**
  The truncation token that appears at the end of the truncated line. `nil` by default.
@@ -221,6 +221,60 @@ extern NSString * const kTTTBackgroundCornerRadiusAttributeName;
  */
 @property (nonatomic, strong) NSDictionary *truncationTokenStringAttributes;
 
+/**
+ If the text is truncated.
+ */
+@property (nonatomic, assign, readonly, getter = isTruncated) BOOL truncated;
+
+///-----------------------------------------------
+/// @name Accessing Fold Token Appearance & Status
+///-----------------------------------------------
+
+/**
+ The regex pattern that applied to the text to detect which part of the text needs folding. The default is `nil`.
+ */
+@property (nonatomic, strong) NSString *textFoldingPattern;
+
+/**
+ The fold token that appears when the text is folded. `nil` by default.
+ */
+@property (nonatomic, strong) NSString *foldTokenString;
+
+/**
+ The attributes to apply to the fold token. If unspecified, attributes will be inherited from the preceding character.
+ */
+@property (nonatomic, strong) NSDictionary *foldTokenStringAttributes;
+
+/**
+ Determines whether the text is folded.
+ */
+@property (nonatomic, assign, getter = isFolded) BOOL folded;
+
+///--------------------------------------------
+/// @name Handling Touch Area
+///--------------------------------------------
+
+
+@property (nonatomic, assign, getter = isTokenClickable) BOOL tokenClickable;
+
+/**
+ The insets for the label's touch area.
+ @discussion It's mainly for UX. A scenario is that you want to touch something on the edge of the label. This property adjusts the touch area of the label. Usually, you may enlarge the whole touch area to make it easier to touch text.
+ */
+@property (nonatomic, assign) UIEdgeInsets labelTouchAreaInsets;
+
+/**
+ The insets for a line's touch area.
+ @discussion It's mainly for UX. A scenario is that the link is short and the font size is small. This property adjusts the touch area of the link text. Usually, you may enlarge the touch area to make it easier to touch.
+ @warning Be careful with touch area collision from both vertical and horizontal directions.
+ */
+@property (nonatomic, assign) UIEdgeInsets lineTouchAreaInsets;
+
+/**
+ The insets for a token (e.g. truncation token) touch area.
+ @warning Be careful with touch area collision from both vertical and horizontal directions.
+ */
+@property (nonatomic, assign) UIEdgeInsets tokenTouchAreaInsets;
 
 ///--------------------------------------------
 /// @name Calculating Size of Attributed String
@@ -432,5 +486,23 @@ didSelectLinkWithTransitInformation:(NSDictionary *)components;
  */
 - (void)attributedLabel:(TTTAttributedLabel *)label
 didSelectLinkWithTextCheckingResult:(NSTextCheckingResult *)result;
+
+/**
+ Tells the delegate that the user did touch the truncation token area.
+ 
+ @param label The label whose trucnation token area was touched.
+ @param truncationTokenString The custom trucncation token string.
+ */
+- (void)attributedLabel:(TTTAttributedLabel *)label
+didTouchTruncationTokenString:(NSString *)truncationTokenString;
+
+/**
+ Tells the delegate that the user did touch the fold token area.
+ 
+ @param label The label whose quotation token area was touched.
+ @param foldTokenString The custom quotation token.
+ */
+- (void)attributedLabel:(TTTAttributedLabel *)label
+didTouchFoldTokenString:(NSString *)foldTokenString;
 
 @end
