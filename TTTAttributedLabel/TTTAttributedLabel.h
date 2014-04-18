@@ -32,6 +32,14 @@ typedef NS_ENUM(NSInteger, TTTAttributedLabelVerticalAlignment) {
     TTTAttributedLabelVerticalAlignmentBottom   = 2,
 };
 
+typedef NS_ENUM(NSUInteger, TTTItemType) {
+    TTTItemTypeOthers           = 0,
+    TTTItemTypeText             = 1,
+    TTTItemTypeLink             = 2,
+    TTTItemTypeTruncationToken  = 3,
+    TTTItemTypeFoldToken        = 4,
+};
+
 /**
  Determines whether the text to which this attribute applies has a strikeout drawn through itself.
  */
@@ -417,6 +425,9 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
  */
 - (void)addLinkToTransitInformation:(NSDictionary *)components
                           withRange:(NSRange)range;
+
+
+- (TTTItemType)itemAtPoint:(CGPoint)p;
 
 @end
 

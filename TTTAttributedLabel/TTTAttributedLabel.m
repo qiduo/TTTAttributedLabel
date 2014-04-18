@@ -70,14 +70,6 @@ typedef UITextAlignment TTTTextAlignment;
 typedef UILineBreakMode TTTLineBreakMode;
 #endif
 
-typedef NS_ENUM(NSUInteger, TTTItemType) {
-    TTTItemTypeOthers = 0,
-    TTTItemTypeText = 1,
-    TTTItemTypeLink = 2,
-    TTTItemTypeTruncationToken = 3,
-    TTTItemTypeFoldToken = 4,
-};
-
 static inline CTTextAlignment CTTextAlignmentFromTTTTextAlignment(TTTTextAlignment alignment) {
 #if __IPHONE_OS_VERSION_MAX_ALLOWED >= 60000
     switch (alignment) {
@@ -1388,7 +1380,8 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
 - (UIView *)hitTest:(CGPoint)point
           withEvent:(UIEvent *)event
 {
-    if (![self linkAtPoint:point]) {
+    TTTItemType itemType = [self itemAtPoint:point];
+    if (itemType == TTTItemTypeOthers || itemType == TTTItemTypeText) {
         return [super hitTest:point withEvent:event];
     }
 
@@ -1492,26 +1485,30 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
         if ([self.delegate respondsToSelector:@selector(attributedLabel:didSelectLinkWithTextCheckingResult:)]) {
             [self.delegate attributedLabel:self didSelectLinkWithTextCheckingResult:result];
         }
-    } else if (self.isTokenClickable && (self.isTruncated || self.isFolded)) {
-        CGPoint point = [[touches anyObject] locationInView:self];
-        TTTItemType itemType = [self itemAtPoint:point];
-        switch (itemType) {
-            case TTTItemTypeFoldToken:
-                if ([self.delegate respondsToSelector:@selector(attributedLabel:didTouchFoldTokenString:)]) {
-                    [self.delegate attributedLabel:self didTouchFoldTokenString:self.foldTokenString];
-                }
-                break;
-            case TTTItemTypeTruncationToken:
-                if ([self.delegate respondsToSelector:@selector(attributedLabel:didTouchTruncationTokenString:)]) {
-                    [self.delegate attributedLabel:self didTouchTruncationTokenString:self.truncationTokenString];
-                }
-                break;
-            case TTTItemTypeText:
-            case TTTItemTypeLink:
-            case TTTItemTypeOthers:
-                break; // Nothing
-        }
     } else {
+        if ((self.isTokenClickable && (self.isTruncated || self.isFolded))) {
+            CGPoint point = [[touches anyObject] locationInView:self];
+            TTTItemType itemType = [self itemAtPoint:point];
+            switch (itemType) {
+                case TTTItemTypeFoldToken:
+                    if ([self.delegate respondsToSelector:@selector(attributedLabel:didTouchFoldTokenString:)]) {
+                        [self.delegate attributedLabel:self didTouchFoldTokenString:self.foldTokenString];
+                        return;
+                    }
+                    break;
+                case TTTItemTypeTruncationToken:
+                    if ([self.delegate respondsToSelector:@selector(attributedLabel:didTouchTruncationTokenString:)]) {
+                        [self.delegate attributedLabel:self didTouchTruncationTokenString:self.truncationTokenString];
+                        return;
+                    }
+                    break;
+                case TTTItemTypeText:
+                case TTTItemTypeLink:
+                case TTTItemTypeOthers:
+                    break; // Nothing
+            }
+        }
+        
         [super touchesEnded:touches withEvent:event];
     }
 }
