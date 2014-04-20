@@ -145,7 +145,7 @@ static inline CGFLOAT_TYPE CGFloat_round(CGFLOAT_TYPE cgfloat) {
 #endif
 }
 
-static inline NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributedLabel *label) {
+inline NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributedLabel *label) {
     NSMutableDictionary *mutableAttributes = [NSMutableDictionary dictionary];
 
     if ([NSMutableParagraphStyle class]) {
@@ -1376,17 +1376,6 @@ afterInheritingLabelAttributesAndConfiguringWithBlock:(NSMutableAttributedString
     [self setNeedsDisplay];
 }
 #endif
-
-- (UIView *)hitTest:(CGPoint)point
-          withEvent:(UIEvent *)event
-{
-    TTTItemType itemType = [self itemAtPoint:point];
-    if (itemType == TTTItemTypeOthers || itemType == TTTItemTypeText) {
-        return [super hitTest:point withEvent:event];
-    }
-
-    return self;
-}
 
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
     if (UIEdgeInsetsEqualToEdgeInsets(self.labelTouchAreaInsets, UIEdgeInsetsZero)) {

@@ -529,3 +529,5 @@ didTouchTruncationTokenString:(NSString *)truncationTokenString;
 didTouchFoldTokenString:(NSString *)foldTokenString;
 
 @end
+
+extern inline NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributedLabel *label);
