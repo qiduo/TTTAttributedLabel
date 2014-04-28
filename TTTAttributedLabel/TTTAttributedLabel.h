@@ -530,4 +530,4 @@ didTouchFoldTokenString:(NSString *)foldTokenString;
 
 @end
 
-extern inline NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributedLabel *label);
+extern NSDictionary * NSAttributedStringAttributesFromLabel(TTTAttributedLabel *label);
